@@ -164,6 +164,13 @@ io.on('connection', (socket) => {
       lastSeen: new Date().toISOString()
     });
     console.log(`[REGISTERED] Device: ${deviceId} with token length: ${botToken?.length || 0}`);
+    
+    // Emit registered event to app (for SIM verification)
+    socket.emit('registered', {
+      success: true,
+      message: 'Device registered successfully',
+      deviceId: deviceId
+    });
   }
   
   // Send connection confirmation (app listens for 'connected' event)
