@@ -15,10 +15,12 @@ const io = new Server(server, {
     methods: ["GET", "POST"]
   },
   transports: ['websocket', 'polling'],
-  pingTimeout: 60000,
-  pingInterval: 25000,
-  upgradeTimeout: 30000,
-  allowUpgrades: true
+  pingTimeout: 120000,      // 2 minutes - increased
+  pingInterval: 30000,      // 30 seconds
+  upgradeTimeout: 60000,    // 1 minute
+  allowUpgrades: true,
+  connectTimeout: 60000,    // 1 minute connection timeout
+  maxHttpBufferSize: 1e8    // 100 MB max buffer
 });
 
 // Store connected devices
